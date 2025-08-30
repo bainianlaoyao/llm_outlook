@@ -57,7 +57,6 @@ class EmailParser:
             model="glm-4.5-air",
             messages=messages,
             temperature=0.6,
-            max_tokens=2000,
             stream=False
         )
 
@@ -156,7 +155,7 @@ class EmailParser:
             # 模拟数据（字典格式）
             return response["choices"][0]["message"]["content"]
 
-    def parse_emails_batch(self, email_list: List[EmailData], language: Optional[str] = None) -> EmailSummaryResult:
+    def parse_emails_batch(self, email_list: List[EmailData], language: Optional[str] = None) -> str:
         """
         批量解析邮件内容，生成周总结
 
@@ -168,13 +167,7 @@ class EmailParser:
             WeeklySummaryResult: 周解析结果对象
         """
         if not email_list:
-            return EmailSummaryResult(
-                has_important_emails=False,
-                overall_summary="本周无新邮件",
-                email_summaries={},
-                push_title="本周邮件总结",
-                push_content="本周无新邮件"
-            )
+            return "无邮件"
 
         # 构建批量prompt
         prompt = self._build_batch_prompt(email_list, language or 'auto')
@@ -190,7 +183,7 @@ class EmailParser:
                 model="glm-4.5-air",
                 messages=messages,
                 temperature=0.6,
-                max_tokens=4000,  # 增加token限制以处理批量邮件
+                max_tokens=64000,  # 增加token限制以处理批量邮件
                 stream=False
             )
             
@@ -202,17 +195,9 @@ class EmailParser:
         except Exception as e:
             logger.error(f"批量解析邮件异常: {e}")
             # 返回失败结果
-            return EmailSummaryResult(
-                has_important_emails=False,
-                overall_summary=f"解析失败: {str(e)}",
-                email_summaries={i: f"解析失败: {str(e)}" for i in range(len(email_list))},
-                push_title="邮件解析失败",
-                push_content=f"无法解析本周邮件: {str(e)}"
-            )
-
+            return "解析失败"
     def _build_batch_prompt(self, email_list: List[EmailData], language: str) -> str:
         """构建批量解析提示语 - 精简版"""
-        language_instruction = "" if language == 'auto' else f"请用{language}语言回复。"
         
         # 构建邮件列表
         email_details = []
@@ -225,92 +210,57 @@ class EmailParser:
 内容: {email.content[:200]}{'...' if len(email.content) > 200 else ''}
 """)
         
-        return f"""请分析以下{len(email_list)}封上周邮件，生成结构化总结：
-
-{language_instruction}
+        return f"""请分析以上{len(email_list)}封上周邮件，生成结构化总结：
 
 {chr(10).join(email_details)}
 
 **分析要求:**
-1. 判断是否有重要邮件（工作相关、紧急事务、重要通知等）
-2. 生成所有邮件的总体总结（200字以内）
-3. 为每封邮件生成80字以内的简短总结
+一步步思考
+1. 判断是否有重要邮件（工作相关、紧急事务、重要通知， 学校事务等， 判断遵循不可漏过原则等）
+2. 对所有重要邮件的进行总结（200字以内）
+3. 为剩余邮件生成80字以内的简短总结
 4. 确保总结简洁明了，突出关键信息
 
 **输出格式:**
-重要邮件: [是/否]
-总体总结: [总结内容， 首先单独给出重要邮件的概括， 然后给出剩余邮件的概括]
-邮件分别总结（无论如何， 为每一封邮件的内容都生成简短总结， 不要只使用标题）:
-邮件1: [总结1]
-邮件2: [总结2]
+一步步的思考分析过程
+
+$
+总体评价(例: 本次分析中有3封邮件值得终点关注, 其中标题为"xxx"的邮件尤其值得关注, 其次, 其余邮件中标题为"xxx"的邮件可能也值得一看)
+
+重要邮件
+---
+邮件1: 
+原标题
+内容总结
+邮件2:
+原标题
+内容总结
+---
+
+其余邮件
+邮件1: 
+原标题
+内容总结
+邮件2:
+原标题
+内容总结
 ...
-邮件N: [总结N]"""
+邮件N: [总结N]
+$
+"""
 
-    def _parse_batch_response(self, response: str, email_list: List[EmailData]) -> EmailSummaryResult:
+
+    def _parse_batch_response(self, response: str, email_list: List[EmailData]) -> str:
         """解析批量AI响应并组装结果 - 精简版"""
-        try:
-            lines = response.strip().split('\n')
-            
-            has_important = False
-            overall_summary = ""
-            email_summaries = {}
-            
-            # 解析响应
-            current_section = None
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                if line.startswith(('重要邮件:', 'Important Emails:')):
-                    current_section = 'important'
-                    has_important = line.split(':', 1)[1].strip().lower() in ['是', 'yes', 'true']
-                elif line.startswith(('总体总结:', 'Overall Summary:')):
-                    current_section = 'summary'
-                    overall_summary = line.split(':', 1)[1].strip()
-                elif line.startswith(('邮件总结:', 'Email Summaries:')):
-                    current_section = 'summaries'
-                elif current_section == 'summaries' and line.startswith(('邮件', 'Email')) and ':' in line:
-                    # 解析邮件总结，如 "邮件1: 总结内容"
-                    parts = line.split(':', 1)
-                    if len(parts) == 2:
-                        try:
-                            email_num = int(parts[0].replace('邮件', '').replace('Email', '').strip())
-                            if 1 <= email_num <= len(email_list):
-                                email_summaries[email_num - 1] = parts[1].strip()[:80]  # 限制80字
-                        except ValueError:
-                            pass
-            
-            # 如果某些邮件没有总结，生成默认总结
-            for i in range(len(email_list)):
-                if i not in email_summaries:
-                    email_summaries[i] = f"{email_list[i].subject[:50]}{'...' if len(email_list[i].subject) > 50 else ''}"
-            
-            # 生成推送内容
-            push_title = "📧 重要邮件" if has_important else "📧 本周邮件总结"
-            push_content = f"重要邮件: {'是' if has_important else '否'}\n\n{overall_summary}\n\n"
-            push_content += "邮件总结:\n" + "\n".join([f"• {summary}" for summary in email_summaries.values()])
-            
-            return EmailSummaryResult(
-                has_important_emails=has_important,
-                overall_summary=overall_summary or "暂无总结",
-                email_summaries=email_summaries,
-                push_title=push_title,
-                push_content=push_content
-            )
-            
-        except Exception as e:
-            logger.error(f"解析批量响应失败: {e}")
-            # 返回默认结果
-            return EmailSummaryResult(
-                has_important_emails=False,
-                overall_summary=f"解析响应失败: {str(e)}",
-                email_summaries={i: email_list[i].subject[:80] for i in range(len(email_list))},
-                push_title="邮件解析异常",
-                push_content=f"解析响应时出错: {str(e)}"
-            )
-
-
+        import re
+        # 使用正则表达式提取$xx$之间的内容
+        pattern = r'\$(.*?)\$'
+        matches = re.findall(pattern, response, re.DOTALL)
+        if matches:
+            # 返回第一个匹配内容（如有多个可根据需求调整）
+            return matches[0].strip()
+        else:
+            return "未找到$...$格式内容"
 def parse_email(email_data: EmailData, language: Optional[str] = None, api_key: Optional[str] = None) -> ParseResult:
     """
     解析邮件内容的便捷函数 - 保持完全兼容
@@ -327,7 +277,7 @@ def parse_email(email_data: EmailData, language: Optional[str] = None, api_key: 
     return parser.parse_email(email_data, language)
 
 
-def parse_emails_batch(email_list: List[EmailData], language: Optional[str] = None, api_key: Optional[str] = None) -> EmailSummaryResult:
+def parse_emails_batch(email_list: List[EmailData], language: Optional[str] = None, api_key: Optional[str] = None) -> str:
     """
     批量解析邮件内容的便捷函数 - 新增功能
 

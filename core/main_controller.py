@@ -150,31 +150,19 @@ class PureOutlookController:
 
     def _handle_emails_batch(self, emails: List[EmailData]) -> bool:
         """批量处理邮件：批量解析→推送"""
-        try:
-            # 1. 批量解析邮件
-            batch_result = self.parser.parse_emails_batch(emails)
-            
-            if not batch_result or not batch_result.overall_summary:
-                self.logger.error("❌ 批量解析失败")
-                return False
 
-            log_email_parse("批量", True)
-            self.logger.info(f"✅ 批量解析成功: {len(emails)} 封邮件")
+        # 1. 批量解析邮件
+        batch_result = self.parser.parse_emails_batch(emails)
+        # 2. 推送批量结果
+        push_result = self.pusher.push(batch_result.split('\n')[0], batch_result)
 
-            # 2. 推送批量结果
-            push_result = self.pusher.push(batch_result.push_title, batch_result.push_content)
-
-            if push_result.success:
-                log_push_message("批量推送", True)
-                self.logger.info(f"✅ 批量推送成功: {batch_result.push_title}")
-                return True
-            else:
-                log_push_message("批量推送", False)
-                self.logger.error(f"❌ 批量推送失败: {push_result.message}")
-                return False
-
-        except Exception as e:
-            self.logger.error(f"批量处理邮件异常: {e}")
+        if push_result.success:
+            log_push_message("批量推送", True)
+            self.logger.info(f"✅ 批量推送成功: {batch_result.split('\n')[0]}")
+            return True
+        else:
+            log_push_message("批量推送", False)
+            self.logger.error(f"❌ 批量推送失败: {push_result.message}")
             return False
 
     def _build_push_content(self, email_data: EmailData, parse_result: ParseResult) -> str:
