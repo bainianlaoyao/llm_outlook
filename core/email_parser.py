@@ -183,7 +183,6 @@ class EmailParser:
                 model="glm-4.5-air",
                 messages=messages,
                 temperature=0.6,
-                max_tokens=64000,  # 增加token限制以处理批量邮件
                 stream=False
             )
             
@@ -221,7 +220,8 @@ class EmailParser:
 3. 为剩余邮件生成80字以内的简短总结
 4. 确保总结简洁明了，突出关键信息
 
-**输出格式:**
+
+**输出格式(自行使用优雅的markdown排版, 不要遗漏$$号, 这是重要的程序化处理符号)**
 一步步的思考分析过程
 
 $

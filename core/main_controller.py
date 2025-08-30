@@ -93,7 +93,7 @@ class PureOutlookController:
         """处理循环：拉取→批量解析→推送"""
         try:
             # 1. 拉取新邮件 - 取消数量限制，只按时间过滤
-            emails, latest_entry_id = self.fetcher.fetch_emails(7)  # 过去7天的所有邮件
+            emails, latest_entry_id = self.fetcher.fetch_emails(1)  # 过去7天的所有邮件
 
             if not emails:
                 self.logger.debug("没有新邮件")
