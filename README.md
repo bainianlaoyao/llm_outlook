@@ -1,75 +1,103 @@
-# AI自动邮件解析项目API接口细化设计
+# auto_mail — Outlook 本地邮件解析与推送
 
----
+简短描述：基于本地 Outlook COM 接口，拉取邮件、调用 z.ai 解析并通过 Server酱 等通道推送摘要。
 
-## 1. IMAP邮件拉取模块
+## 特性
+- 使用本地 Outlook COM（pywin32）直接读取邮件，零网络依赖用于企业环境
+- 断点续拉与去重（基于 EntryID）
+- 批量 AI 解析（使用 z.ai，见 [`core/email_parser.py`](core/email_parser.py:1)）
+- 多通道推送支持（Server酱 实现见 [`core/message_pusher.py`](core/message_pusher.py:1)）
+- 简洁控制器与一次性执行流程（见 [`core/main_controller.py`](core/main_controller.py:1)）
 
-### 1.1 功能说明
-连接Outlook邮箱，通过IMAP协议定时拉取新邮件，支持多账号、断点续拉与去重。
+## 系统要求
+- Windows（需安装 Microsoft Outlook 并启用 COM 自动化）
+- Python 3.8+
 
-### 1.2 接口定义
+## 安装
+1. 克隆仓库并进入项目根目录
 
-#### fetch_emails
-- 拉取指定邮箱的新邮件列表
-- **请求参数**：
-  - email：邮箱账号
-  - password：邮箱密码
-  - imap_server：IMAP服务器地址
-  - port：端口号
-  - fetch_interval：拉取周期（秒）
-  - last_uid：上次拉取的邮件UID（断点续拉）
-
----
-
-## 2. z.ai邮件解析模块
-
-### 2.1 功能说明
-调用z.ai智能解析API，对邮件原文进行结构化摘要与关键信息提取，支持多语言与附件场景。
-
-### 2.2 接口定义
-
-#### parse_email
-- 解析邮件内容，生成结构化摘要
-- **请求参数**：
-  - email：邮件原文（含主题、正文、附件）
-  - language：邮件语言（可选）
-
----
-
-## 3. 消息推送模块
-
-### 3.1 功能说明
-将解析后的邮件摘要通过Server酱等推送服务发送至用户微信，支持推送失败重试与日志记录。
-
-### 3.2 接口定义
-
-#### push_message
-- 推送邮件摘要信息
-- **请求参数**：
-  - summary：邮件摘要信息
-  - push_channel：推送渠道（如serverchan、wechat、dingding）
-
----
-
-## 4. 接口调用流程Mermaid图
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant IMAP
-    participant ZAI
-    participant Push
-
-    Client->>IMAP: fetch_emails
-    IMAP-->>Client: 邮件原文列表
-    Client->>ZAI: parse_email
-    ZAI-->>Client: 结构化摘要
-    Client->>Push: push_message
-    Push-->>Client: 推送结果
+```bash
+git clone <repo-url>
+cd auto_mail
 ```
 
+2. 安装依赖
+
+```bash
+pip install pywin32 zai
+```
+
+（可选）如果使用 virtualenv：
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install pywin32 zai
+```
+
+## 配置
+默认配置位于 [`config/config_template.py`](config/config_template.py:1)（运行时由 `config.config.get_config()` 加载），常用项说明：
+
+```python
+# 示例：config/config_template.py 中的关键配置结构
+CONFIG = {
+    "outlook": {
+        "profile": "Outlook",
+    },
+    "parser": {
+        "api_key": "", # zai API key，或使用环境变量 ZAI_API_KEY
+    },
+    "push": {
+        "channel": "serverchan",
+        "sendkey": "", # Server酱 SendKey 或通过环境变量 SERVERCHAN_SENDKEY
+    },
+    "log": {
+        "level": "INFO",
+        "file_path": "logs/auto_mail.log",
+    },
+}
+```
+
+说明：
+- 修改 [`config/config_template.py`](config/config_template.py:1) 或通过环境变量（例如 `ZAI_API_KEY`、`SERVERCHAN_SENDKEY`）提供敏感凭据。
+- 日志配置可参考 [`config/defaults.py`](config/defaults.py:1)。
+
+## 使用说明
+- 运行一次性任务（主入口）：[`main.py`](main.py:1)
+
+```bash
+python main.py
+```
+
+- 代码示例（在 Python 中调用控制器）：
+
+```python
+from core.main_controller import PureOutlookController
+from config.config import get_config
+
+cfg = get_config()
+controller = PureOutlookController(cfg)
+controller.start()
+```
+
+模块说明：
+- [`core/outlook_email_fetcher.py`](core/outlook_email_fetcher.py:1)：通过 COM 获取邮件并转换为 `EmailData`
+- [`core/email_parser.py`](core/email_parser.py:1)：调用 z.ai 生成结构化摘要
+- [`core/message_pusher.py`](core/message_pusher.py:1)：Server酱推送与多通道管理
+- [`core/main_controller.py`](core/main_controller.py:1)：拉取→解析→推送的一次性执行流
+
+## 日志与数据
+- 日志文件默认：`logs/auto_mail.log`（可在配置中修改）
+- 已处理邮件 ID 存储于 `data/processed_entry_ids.txt`、`data/last_entry_id.txt`（用于断点续拉）
+
+## 贡献
+感谢贡献。请遵循以下流程：
+1. fork 仓库并新建分支 feature/xxx
+2. 编写单元测试并确保本地通过
+3. 提交 PR，描述变更并关联 issue（如有）
+
+## 许可证
+本项目采用 MIT 许可证。详见 LICENSE 文件（若无，请考虑补充）。
+
 ---
-
-## 5. 总结
-
-本次API接口细化设计涵盖IMAP邮件拉取、z.ai邮件解析、消息推送三大核心模块，明确了各接口的功能与参数，便于后续开发与对接。
+参见旧说明：[`OUTLOOK_MAIL_README.md`](OUTLOOK_MAIL_README.md:1) 以获取更多实现细节。
