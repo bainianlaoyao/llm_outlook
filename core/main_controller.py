@@ -130,26 +130,3 @@ class PureOutlookController:
         log_info("纯Outlook邮件处理系统已停止")
         self.logger.info("✓ 系统已安全关闭")
 
-
-def create_outlook_controller_from_config(config_file: Optional[str] = None) -> PureOutlookController:
-    """
-    从配置文件创建控制器
-
-    参数:
-        config_file: 配置文件路径
-
-    返回:
-        配置好的控制器实例
-    """
-    config = {}
-
-    if config_file and os.path.exists(config_file):
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            print(f"✅ 已加载配置文件: {config_file}")
-        except Exception as e:
-            print(f"❌ 加载配置文件失败: {e}")
-            print("使用默认配置继续...")
-
-    return PureOutlookController(config)

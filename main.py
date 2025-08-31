@@ -14,8 +14,8 @@ from typing import Optional
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from core.main_controller import create_outlook_controller_from_config
-from config.defaults import CONFIG_FILE_PATH, DEFAULT_CONFIG_TEMPLATE
+from core.main_controller import PureOutlookController
+from config.config import get_config
 from utils.logger import get_logger, log_info
 
 
@@ -28,21 +28,13 @@ class AutoMailSystem:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-    def run(self, config_file: Optional[str] = None, create_config: bool = False):
+    def run(self, config_file: Optional[str] = None):
         """运行系统 - 一次性执行模式"""
-        if create_config:
-            self._create_sample_config()
-            return 0
 
-        config_path = Path(config_file or CONFIG_FILE_PATH)
-        if not config_path.exists():
-            self.logger.error(f"配置文件不存在: {config_path}")
-            self.logger.info("请使用 --create-config 创建示例配置文件，或指定 --config 参数")
-            return 1
+        config = get_config()
 
         try:
-            self.logger.info(f"使用配置文件: {config_path}")
-            self.controller = create_outlook_controller_from_config(str(config_path))
+            self.controller = PureOutlookController(config)
             if self.controller.start():
                 self.logger.info("系统正常退出")
                 return 0
@@ -63,16 +55,6 @@ class AutoMailSystem:
         if self.controller:
             self.controller.stop()
 
-    def _create_sample_config(self):
-        """生成示例配置文件"""
-        config_path = Path(CONFIG_FILE_PATH)
-        try:
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump(DEFAULT_CONFIG_TEMPLATE, f, indent=2, ensure_ascii=False)
-            self.logger.info(f"示例配置文件已创建: {config_path}")
-        except Exception as e:
-            self.logger.error(f"创建示例配置文件失败: {e}")
 
 
 def main():
@@ -81,20 +63,12 @@ def main():
     parser.add_argument(
         '--config', '-c',
         type=str,
-        help=f'指定配置文件路径 (默认: {CONFIG_FILE_PATH})'
-    )
-    parser.add_argument(
-        '--create-config',
-        action='store_true',
-        help='创建示例配置文件并退出'
+        help='指定配置文件路径（已弃用，配置来自 config.config）'
     )
     args = parser.parse_args()
 
     system = AutoMailSystem()
-    exit_code = system.run(
-        config_file=args.config,
-        create_config=args.create_config
-    )
+    exit_code = system.run(config_file=args.config)
     sys.exit(exit_code)
 
 
