@@ -73,8 +73,6 @@ class OutlookEmailFetcher:
                         break
 
                     entry_id = item.EntryID
-                    if entry_id in self.processed_ids:
-                        continue
 
                     email_data = self._convert_to_email_data(item, entry_id)
                     if email_data:
@@ -119,9 +117,9 @@ class OutlookEmailFetcher:
     
     def _find_account_by_keyword(self, keyword: str):
         """通过关键字查找账户"""
-        for account in self.namespace.Accounts:
-            if keyword.lower() in account.SmtpAddress.lower():
-                return account
+        # for account in self.namespace.Accounts:
+        #     if keyword.lower() in account.SmtpAddress.lower():
+        #         return account
         return None
 
     def _cleanup(self):
